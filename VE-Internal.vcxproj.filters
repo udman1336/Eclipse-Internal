@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="game">
+      <UniqueIdentifier>{76f84a39-d00b-4b7b-91d6-92bbbb1fa77c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game\sdk">
+      <UniqueIdentifier>{4b298030-fa7c-4314-b9cf-54030476036f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="framework">
+      <UniqueIdentifier>{3c074fe3-bcfe-448d-ad30-8618894c59e1}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\CoreUObject_classes.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\CoreUObject_parameters.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\CoreUObject_structs.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\Engine_classes.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\Engine_parameters.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\Engine_structs.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\Basic.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\FortniteGame_classes.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\FortniteGame_parameters.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK\FortniteGame_structs.hpp">
+      <Filter>game\sdk</Filter>
+    </ClInclude>
+    <ClInclude Include="Canvas.h">
+      <Filter>framework</Filter>
+    </ClInclude>
+    <ClInclude Include="SDK.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="SDK\CoreUObject_functions.cpp">
+      <Filter>game\sdk</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\Engine_functions.cpp">
+      <Filter>game\sdk</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\Basic.cpp">
+      <Filter>game\sdk</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\FortniteGame_functions.cpp">
+      <Filter>game\sdk</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK.cpp" />
+  </ItemGroup>
+</Project>
