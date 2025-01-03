@@ -31,6 +31,8 @@ namespace Settings {
 
 	namespace Environment {
 		bool Loot;
+		bool Chests;
+		bool Ammobox;
 	}
 
 	namespace Exploits {
@@ -38,13 +40,17 @@ namespace Settings {
 		bool ProjectileTP;
 		bool FirstPerson;
 		bool PlayerFly;
+		float PlayerFlySpeed = 2.5;
 		bool AimInAir;
+		bool FovChanger;
+		float FovChangerSize = 90;
 	}
 
 	namespace Misc {
 		float FontSize;
 		bool bIsInGame;
 		bool UnHook;
+		bool IgnoreDowned;
 	}
 }
 
@@ -650,6 +656,7 @@ namespace Framework
 			case MenuTabs::Combat:
 				Framework.Text( FString( L"Aimbot Settings" ) );
 				Framework.Checkbox( FString( L"Aimbot" ), &Settings::Combat::Aimbot );
+				Framework.Checkbox( FString( L"Silent" ), &Settings::Combat::SilentAim::SilentEnable );
 				Framework.Checkbox( FString( L"Prediction" ), &Settings::Combat::Prediction );
 				Framework.Slider( FString( L"Smoothing" ), &Settings::Combat::Smoothing, 1, 15 );
 				Framework.Slider( FString( L"Aim Shake" ), &Settings::Combat::AimShake, 0, 5 );
@@ -667,17 +674,23 @@ namespace Framework
 				break;
 			case MenuTabs::Environment:
 				Framework.Checkbox( FString( L"Loot" ), &Settings::Environment::Loot );
+				Framework.Text( FString( L"Containers" ) );
+				Framework.Checkbox( FString( L"Chests" ), &Settings::Environment::Chests );
+				Framework.Checkbox( FString( L"Ammo Box's" ), &Settings::Environment::Ammobox );
 				break;
 			case MenuTabs::Exploits:
 				Framework.Checkbox( FString( L"Streamer Loot" ), &Settings::Exploits::StreamerLoot );
 				Framework.Checkbox( FString( L"Projectile TP" ), &Settings::Exploits::ProjectileTP );
 				Framework.Checkbox( FString( L"First Person" ), &Settings::Exploits::FirstPerson );
 				Framework.Checkbox( FString( L"Player Fly" ), &Settings::Exploits::PlayerFly );
-				Framework.Checkbox( FString( L"Aim In Air" ), &Settings::Exploits::AimInAir );
+				Framework.Slider( FString( L"Player Fly Speed" ), &Settings::Exploits::PlayerFlySpeed, 1, 25 );
+				Framework.Checkbox( FString( L"Fov Changer" ), &Settings::Exploits::FovChanger );
+				Framework.Slider( FString( L"Fov Changer Value" ), &Settings::Exploits::FovChangerSize, 50, 170 );
 				break;
 			case MenuTabs::Misc:
 				//Framework.Slider( FString( L"Font Size" ), &Settings::Misc::FontSize, 2, 20 );
-				if ( Framework.Button( FString( L"Unhook" ) ) ) Settings::Misc::UnHook = true;
+				//if ( Framework.Button( FString( L"Unhook" ) ) ) Settings::Misc::UnHook = true;
+				Framework.Checkbox( FString( L"Ignore Downed" ), &Settings::Misc::IgnoreDowned );
 				break;
 		}
 

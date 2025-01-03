@@ -26,12 +26,112 @@ bool IsValidPointer( void* Address ) {
 
 namespace VFTIndexs {
 	int DrawTransitionVFT = 0x2E0 / 0x8;
+	int GetPlayerViewpointVFT = 0x6B0 / 0x8;
+	int GetViewpointVFT = 0x240 / 0x8;
 }
 namespace VFTHooks {
 	Hook::NewHook ViewportHook;
+	Hook::NewHook LocalPlayerHook;
+	Hook::NewHook PlayerControllerHook;
 }
 
-bool ShouldRetreieveClosestPawn = true;
+namespace SilentVariables {
+	FRotator TargetRotationWithSmooth;
+	FRotator CameraRotation;
+	FVector CameraLocation;
+}
+
+AFortPlayerPawn* ClosestPlayer = 0;
+
+namespace Hooks {
+	namespace Data {
+		APlayerController* PlayerController;
+		ULocalPlayer* LocalPlayer;
+	}
+	namespace GetViewpoint {
+		void GetViewpointCallback( SDK::FMinimalViewInfo* OutViewInfo ) {
+			if ( !ue->PlayerController ) return;
+			if ( Settings::Exploits::FovChanger ) {
+				OutViewInfo->FOV = Settings::Exploits::FovChangerSize;
+			}
+			if ( !Settings::Combat::SilentAim::SilentEnable ) return;
+			if ( !ue->PlayerController->IsInputKeyDown( ue->LeftMouseButton ) ) return;
+
+			if ( ClosestPlayer ) {
+				OutViewInfo->Rotation = SilentVariables::CameraRotation;
+				OutViewInfo->Location = SilentVariables::CameraLocation;
+			}
+		}
+
+		void( *GetViewPointOriginal )( ULocalPlayer*, FMinimalViewInfo*, BYTE ) = nullptr;
+		void GetViewPointHook( ULocalPlayer* this_LocalPlayer, FMinimalViewInfo* OutViewInfo, BYTE StereoPass )
+		{
+			GetViewPointOriginal( this_LocalPlayer, OutViewInfo, StereoPass );
+
+			GetViewpointCallback( OutViewInfo );
+		}
+
+		bool Hooked = false;
+	}
+
+	namespace GetPlayerViewpoint {
+		void GetPlayerViewpointCallback( FVector* Location, FRotator* Rotation ) {
+			if ( !ue->PlayerController ) return;
+			if ( !Settings::Combat::SilentAim::SilentEnable ) return;
+			if ( !ue->PlayerController->IsInputKeyDown( ue->LeftMouseButton ) ) return;
+
+			if ( ClosestPlayer ) {
+				*Rotation = SilentVariables::TargetRotationWithSmooth;
+			}
+		}
+
+		void( *GetPlayerViewPointOriginal )( APlayerController*, FVector*, FRotator* ) = nullptr;
+		void GetPlayerViewPointHook( APlayerController* this_PlayerController, FVector* Location, FRotator* Rotation )
+		{
+			GetPlayerViewPointOriginal( this_PlayerController, Location, Rotation );
+
+			GetPlayerViewpointCallback( Location, Rotation );
+		}
+
+		bool Hooked = false;
+	}
+
+
+	void Tick( ) {
+		if ( (Settings::Combat::SilentAim::SilentEnable || Settings::Exploits::FovChanger ) && GetViewpoint::Hooked == false ) {
+			if ( IsValidPointer( Data::LocalPlayer ) && ue->KismetSystemLibrary->IsValid( Data::LocalPlayer ) ) {
+				if ( VFTHooks::LocalPlayerHook.Initialize( Data::LocalPlayer ) ) {
+					VFTHooks::LocalPlayerHook.Insert( &GetViewpoint::GetViewPointHook, VFTIndexs::GetViewpointVFT, &GetViewpoint::GetViewPointOriginal );
+					VFTHooks::LocalPlayerHook.SwapContext( );
+					GetViewpoint::Hooked = true;
+				}
+			}
+		}
+		else if ( ( !Settings::Combat::SilentAim::SilentEnable && !Settings::Exploits::FovChanger ) && GetViewpoint::Hooked == true ) {
+			if ( VFTIndexs::GetViewpointVFT && IsValidPointer( Hooks::Data::LocalPlayer ) && ue->KismetSystemLibrary->IsValid( Hooks::Data::LocalPlayer ) ) {
+				VFTHooks::LocalPlayerHook.RevertHook( );
+				GetViewpoint::Hooked = false;
+			}
+		}
+
+		if ( Settings::Combat::SilentAim::SilentEnable && GetPlayerViewpoint::Hooked == false ) {
+			if ( IsValidPointer( Data::PlayerController ) && ue->KismetSystemLibrary->IsValid( Data::PlayerController ) ) {
+				if ( VFTHooks::PlayerControllerHook.Initialize( Data::PlayerController ) ) {
+					VFTHooks::PlayerControllerHook.Insert( &GetPlayerViewpoint::GetPlayerViewPointHook, VFTIndexs::GetPlayerViewpointVFT, &GetPlayerViewpoint::GetPlayerViewPointOriginal );
+					VFTHooks::PlayerControllerHook.SwapContext( );
+					GetPlayerViewpoint::Hooked = true;
+				}
+			}
+		}
+		else if ( ( !Settings::Combat::SilentAim::SilentEnable ) && GetPlayerViewpoint::Hooked == true ) {
+			if ( VFTIndexs::GetPlayerViewpointVFT && IsValidPointer( Hooks::Data::PlayerController ) && ue->KismetSystemLibrary->IsValid( Hooks::Data::PlayerController ) ) {
+				VFTHooks::PlayerControllerHook.RevertHook( );
+				GetPlayerViewpoint::Hooked = false;
+			}
+		}
+	}
+}
+
 void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 	if ( !Viewport || !Canvas ) return;
 	ue->CachedCanvas = Canvas;
@@ -67,11 +167,14 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 	auto MyCameraLocation = PlayerCameraManager->GetCameraLocation( );
 	auto MyCameraRotation = PlayerCameraManager->GetCameraRotation( );
 
-	static AFortPlayerPawn* ClosestPlayer = 0;
-	static float ClosestDistance = FLT_MAX;
+	SilentVariables::CameraLocation = MyCameraLocation;
+	SilentVariables::CameraRotation = MyCameraRotation;
+
+	static float ClosestDistanceToCenter = FLT_MAX;
 
 	SDK::TArray<SDK::AActor*> Players;
 	SDK::TArray<SDK::AActor*> Pickups;
+	SDK::TArray<SDK::AActor*> Containers;
 	SDK::TArray<SDK::AActor*> Projectiles;
 	ue->GameplayStatics->STATIC_GetAllActorsOfClass( ue->World, ( SDK::AActor* )SDK::AFortPlayerPawn::StaticClass( ), &Players );
 
@@ -84,11 +187,8 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 		ActorCount = Players.Num( );
 	}
 
-	if ( ShouldRetreieveClosestPawn )
-	{
-		ClosestPlayer = nullptr;
-		ClosestDistance = FLT_MAX;
-	}
+	ClosestPlayer = nullptr;
+	ClosestDistanceToCenter = FLT_MAX;
 
 	//if ( ue->DrawingFont->LegacyFontSize != Settings::Misc::FontSize ) {
 	//	ue->DrawingFont->LegacyFontSize = Settings::Misc::FontSize;
@@ -98,6 +198,39 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 
 	if ( Settings::Combat::DrawFOV ) {
 		Wrapper::Circle( CORE( )->GetCenterScreen( ), FLinearColorPalette::SoftPink, DynamicFOVVal, 64 );
+	}
+
+	Hooks::Data::LocalPlayer = ue->LocalPlayer;
+	Hooks::Data::PlayerController = ue->PlayerController;
+	Hooks::Tick( );
+
+	int AimbotBone = BoneIDS::HEAD;
+
+	if ( Settings::Environment::Chests || Settings::Environment::Ammobox ) {
+		ue->GameplayStatics->STATIC_GetAllActorsOfClass( ue->World, ( SDK::AActor* )SDK::ABuildingContainer::StaticClass( ), &Containers );
+		for ( int i = 0; i < Containers.Num( ); i++ ) {
+			if ( !Containers.IsValidIndex( i ) ) continue;
+			auto Container = ( SDK::ABuildingContainer* )Containers[ i ];
+			if ( !Container ) continue;
+
+			auto ObjectName = ue->KismetSystemLibrary->GetObjectName( Container );
+			bool IsAmmoBox = ue->KismetStringLibrary->Contains( ObjectName, FString( L"Ammo" ), false, false );
+			bool IsChest = ue->KismetStringLibrary->Contains( ObjectName, FString( L"Chest" ), false, false );
+
+			if ( !( ( Settings::Environment::Ammobox && IsAmmoBox ) || ( Settings::Environment::Chests && IsChest ) ) ) continue;
+
+			FString DisplayName = IsChest ? FString( L"Chest" ) : FString( L"Ammo Box" );
+			FLinearColor RenderColor = IsChest ? FLinearColorPalette::Gold : FLinearColorPalette::Green;
+
+			if ( Container->bAlreadySearched ) continue;
+
+			auto ContainerLocation = Container->K2_GetActorLocation( );
+			auto ScreenLocation = CORE( )->Project( ContainerLocation );
+			if ( CORE( )->Vector_Distance( MyCameraLocation, ContainerLocation ) / 100 > 250 ) continue;
+			if ( !CORE( )->IsOnScreen( ScreenLocation ) ) continue;
+
+			Wrapper::Text( DisplayName, ScreenLocation, RenderColor, true, false, true );
+		}
 	}
 
 	
@@ -140,9 +273,45 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 		auto RootComponent = Player->RootComponent; if ( !RootComponent ) continue;
 
 		if ( ue->FortKismetLibrary->OnSameTeam( Player, AcknowledgedPawn ) ) continue;
+		if ( Player->IsDead( ) ) continue;
+
+		static bool bInitBones = false;
+		if (!bInitBones )
+		{
+			std::string LastBoneName;
+
+			std::stringstream EnumStream;
+
+			EnumStream << "enum BoneIDS : uint8_t {\n";
+
+			for ( int bone = 0; bone < Mesh->GetNumBones( ); bone++ ) {
+				auto BoneIndex = bone;
+				auto BoneName = Mesh->GetBoneName( BoneIndex ).ToString( );
+
+				if ( bone == 0 ) BoneName = "Root";
+
+				if ( bone > 0 && BoneName.find( LastBoneName ) != std::string::npos ) {
+					BoneName = BoneName.substr( LastBoneName.length( ) );
+				}
+
+
+				EnumStream << "\t" << BoneName << " = " << bone << ",\t// \"" << BoneName << "\"\n";
+
+				LastBoneName = Mesh->GetBoneName( BoneIndex ).ToString( );
+			}
+
+			EnumStream << "\n\tNone = 0,\n";
+			EnumStream << "\tBONEID_MAX = " << Mesh->GetNumBones( ) << "\t// Max Value For Looping\n";
+
+			EnumStream << "};\n";
+
+			printf( "enum ->\n%s", EnumStream.str( ).c_str( ) );
+
+			bInitBones = true;
+		}
 
 		auto RootBone = Mesh->GetSocketLocation( Mesh->GetBoneName( BoneIDS::Root ) );
-		auto HeadBone = Mesh->GetSocketLocation( Mesh->GetBoneName( BoneIDS::head ) );
+		auto HeadBone = Mesh->GetSocketLocation( Mesh->GetBoneName( BoneIDS::HEAD ) );
 
 		auto RootScreen = CORE( )->Project( RootBone );
 		auto HeadScreen = CORE( )->Project( HeadBone );
@@ -161,22 +330,22 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 
 		if ( Settings::Visuals::Skeleton ) {
 			std::vector<std::pair<int, int>> SkeletonConnections = {
-				{neck_01, head},
-				{spine_02, neck_01},
-				{spine_01, spine_02},
-				{spine_03, spine_01}, // stomach to chest
-				{pelvis, spine_03},
-				{clavicle_r, spine_02},
+				{neck_01, HEAD},
+				{Spine_03, neck_01},
+				{spine_01, Spine_02},
+				{Spine_03, spine_01}, // stomach to chest
+				{pelvis, Spine_03},
+				{clavicle_r, Spine_02},
 				{upperarm_r, clavicle_r},
 				{lowerarm_r, upperarm_r}, // right elbow
 				{hand_r, lowerarm_r},
-				{clavicle_l, spine_02},
+				{clavicle_l, Spine_02},
 				{upperarm_l, clavicle_l},
 				{lowerarm_l, upperarm_l}, // left elbow
 				{hand_l, lowerarm_l},
 				{thigh_r, pelvis},
 				{calf_r, thigh_r},
-				{foot_r, calf_r},
+				{Foot_R, calf_r},
 				{thigh_l, pelvis},
 				{calf_l, thigh_l},
 				{foot_l, calf_l},
@@ -201,17 +370,20 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 			}
 		}
 
-		if ( ShouldRetreieveClosestPawn )
-		{
-			FVector2D CalculatedDistance = HeadScreen - ue->ScreenCenter;
-			auto dist = CalculatedDistance.Length( );
+		if ( Settings::Misc::IgnoreDowned && Player->IsDBNO( ) ) continue;
 
-			if ( dist < DynamicFOVVal && dist < ClosestDistance ) {
-				ClosestDistance = dist;
+		auto AimbotBoneScreen = CORE( )->Project( Mesh->GetSocketLocation( Mesh->GetBoneName( AimbotBone ) ) );
+	   
+		if ( CORE( )->InCircle( ue->ScreenCenter, DynamicFOVVal, AimbotBoneScreen ) ) {
+			float DistanceToCenter = CORE( )->Vector_Distance2D( ue->ScreenCenter, AimbotBoneScreen );
+
+			if ( DistanceToCenter < ClosestDistanceToCenter ) {
+				ClosestDistanceToCenter = DistanceToCenter;
 				ClosestPlayer = Player;
 			}
 		}
 	}
+
 	
 
 	static bool bResetFirstPerson = false;
@@ -244,7 +416,7 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 		if ( auto CurrentWeapon = AcknowledgedPawn->CurrentWeapon ) {
 			if (auto WeaponData = CurrentWeapon->WeaponData ) {
 				auto ClosestMesh = ClosestPlayer->Mesh;
-				auto ChestBone = ClosestMesh->GetSocketLocation( ClosestMesh->GetBoneName( BoneIDS::spine_03 ) );
+				auto ChestBone = ClosestMesh->GetSocketLocation( ClosestMesh->GetBoneName( AimbotBone ) );
 				auto ChestScreen = CORE( )->Project( ChestBone );
 
 				auto MuzzleLocation = CurrentWeapon->GetMuzzleLocation( );
@@ -256,56 +428,56 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 		}
 	}
 
-	if ( Settings::Combat::Aimbot && ClosestPlayer) {
-		if ( ue->PlayerController->IsInputKeyDown( Framework::GetAimKey() ) ) {
-			ShouldRetreieveClosestPawn = false;
-			if ( auto CurrentWeapon = AcknowledgedPawn->CurrentWeapon ) {
-				auto ClosestMesh = ClosestPlayer->Mesh;
-				auto ChestBone = ClosestMesh->GetSocketLocation( ClosestMesh->GetBoneName( BoneIDS::spine_03 ) );
+	if ( (Settings::Combat::Aimbot || Settings::Combat::SilentAim::SilentEnable) && ClosestPlayer) {
+		if ( auto CurrentWeapon = AcknowledgedPawn->CurrentWeapon ) {
+			auto ClosestMesh = ClosestPlayer->Mesh;
+			auto ChestBone = ClosestMesh->GetSocketLocation( ClosestMesh->GetBoneName( AimbotBone ) );
 
-				float Distance = CORE()->Vector_Distance( MyCameraLocation, ChestBone );
+			float Distance = CORE()->Vector_Distance( MyCameraLocation, ChestBone );
 
-				auto WorldSecondsDelta = ue->GameplayStatics->GetWorldDeltaSeconds( GWorld );
+			auto WorldSecondsDelta = ue->GameplayStatics->GetWorldDeltaSeconds( GWorld );
 
-				if ( CurrentWeapon->IsProjectileWeapon( ) && Settings::Combat::Prediction ) {
-					ChestBone = CORE( )->Predict( MyCameraLocation, ChestBone, ClosestPlayer->GetVelocity( ), CurrentWeapon );
+			if ( CurrentWeapon->IsProjectileWeapon( ) && Settings::Combat::Prediction ) {
+				ChestBone = CORE( )->Predict( MyCameraLocation, ChestBone, ClosestPlayer->GetVelocity( ), CurrentWeapon );
+			}
+
+			auto ChestRotation = ue->KismetMathLibrary->FindLookAtRotation( MyCameraLocation, ChestBone );
+
+			if ( Settings::Combat::AimShake > 1 ) {
+				auto CurrentTime = ue->GameplayStatics->GetTimeSeconds( GWorld );
+
+				float MaxShakeRange = 5;
+				float MinShakeMultiplier = 0.1f;
+				float ShakeMultiplier = std::clamp( 1.0f - ( Distance / MaxShakeRange ), MinShakeMultiplier, 1.f );
+
+				float ShakeSpeed = 20.7f;
+
+				float GlobalShakeScale = Settings::Combat::AimShake;
+
+				float MaxPitchShakeBase = 0.5f;
+				float MaxYawShakeBase = 0.3f;
+				float MaxPitchShake = MaxPitchShakeBase * ShakeMultiplier * GlobalShakeScale;
+				float MaxYawShake = MaxYawShakeBase * ShakeMultiplier * GlobalShakeScale;
+
+				float PitchShake = MaxPitchShake * ue->KismetMathLibrary->Sin( CurrentTime * ShakeSpeed );
+				float YawShake = MaxYawShake * ue->KismetMathLibrary->Sin( CurrentTime * ( ShakeSpeed + 2.0f ) );
+
+				if ( !ue->PlayerController->IsInputKeyDown( ue->LeftMouseButton ) ) {
+					ChestRotation.Pitch += PitchShake;
+					ChestRotation.Yaw += YawShake;
 				}
+			}
 
-				auto ChestRotation = ue->KismetMathLibrary->FindLookAtRotation( MyCameraLocation, ChestBone );
+			SilentVariables::TargetRotationWithSmooth = ChestRotation;
 
-				if ( Settings::Combat::AimShake > 1 ) {
-					auto CurrentTime = ue->GameplayStatics->GetTimeSeconds( GWorld );
+			//ChestRotation = ue->KismetMathLibrary->RInterpTo_Constant( MyCameraRotation, ChestRotation, WorldSecondsDelta, CORE( )->ConvertSmoothnessToSpeed( Settings::Combat::Smoothing ) );
+			ChestRotation = CORE( )->SmoothMe( MyCameraRotation, ChestRotation, Settings::Combat::Smoothing );
 
-					float MaxShakeRange = 5;
-					float MinShakeMultiplier = 0.1f;
-					float ShakeMultiplier = std::clamp( 1.0f - ( Distance / MaxShakeRange ), MinShakeMultiplier, 1.f );
-
-					float ShakeSpeed = 20.7f;
-
-					float GlobalShakeScale = Settings::Combat::AimShake;
-
-					float MaxPitchShakeBase = 0.5f;
-					float MaxYawShakeBase = 0.3f;
-					float MaxPitchShake = MaxPitchShakeBase * ShakeMultiplier * GlobalShakeScale;
-					float MaxYawShake = MaxYawShakeBase * ShakeMultiplier * GlobalShakeScale;
-
-					float PitchShake = MaxPitchShake * ue->KismetMathLibrary->Sin( CurrentTime * ShakeSpeed );
-					float YawShake = MaxYawShake * ue->KismetMathLibrary->Sin( CurrentTime * ( ShakeSpeed + 2.0f ) );
-
-					if ( !ue->PlayerController->IsInputKeyDown( ue->LeftMouseButton ) ) {
-						ChestRotation.Pitch += PitchShake;
-						ChestRotation.Yaw += YawShake;
-					}
-				}
-
-				//ChestRotation = ue->KismetMathLibrary->RInterpTo_Constant( MyCameraRotation, ChestRotation, WorldSecondsDelta, CORE( )->ConvertSmoothnessToSpeed( Settings::Combat::Smoothing ) );
-				ChestRotation = CORE( )->SmoothMe( MyCameraRotation, ChestRotation, Settings::Combat::Smoothing );
-
+			if ( !Settings::Combat::SilentAim::SilentEnable && ue->PlayerController->IsInputKeyDown( Framework::GetAimKey( ) ) ) {
 				ue->PlayerController->SetControlRotation( ChestRotation );
 			}
 		}
 		else {
-			ShouldRetreieveClosestPawn = true;
 		}
 	}
 
@@ -347,6 +519,13 @@ void SetupClasses( ) {
 	ue->LeftMouseButton = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"LeftMouseButton" ) } };
 	ue->RightMouseButton = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"RightMouseButton" ) } };
 	ue->Insert = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"Insert" ) } };
+	ue->LeftControl = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"Left Control" ) } };
+	ue->SpaceBar = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"SpaceBar" ) } };
+	ue->W = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"W" ) } };
+	ue->A = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"A" ) } };
+	ue->S = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"S" ) } };
+	ue->D = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"D" ) } };
+	ue->LeftShift = SDK::FKey { SDK::FName{ue->KismetStringLibrary->Conv_StringToName( L"Left Shift" ) } };
 }
 
 void main( ) {
