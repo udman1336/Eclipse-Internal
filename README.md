@@ -24,7 +24,7 @@ This repository contains an internal source and resources for Eclipse Version 3.
 Here's a sneak peek of the internal:  
 ![Screenshot](./Screenshot%202025-01-01%20213810.png)
 
-![Video]([./Screenshot%202025-01-01%20213810.png](https://vimeo.com/1043586061?share=copy))
+![Video](https://vimeo.com/1043586061?share=copy)
 
 ---
 
