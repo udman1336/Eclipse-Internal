@@ -4,6 +4,8 @@
 Welcome to the **Eclipse-Internal** repository!  
 This repository contains an internal source and resources for Eclipse Version 3.6. Feel free to use this to create cheats or explore the SDK.
 
+THIS IS NOT FOR CURRENT FORTNITE, THIS IS FOR OG FORTNITE
+
 ---
 
 > **Why This Exists:**  
@@ -24,6 +26,8 @@ This repository contains an internal source and resources for Eclipse Version 3.
 Here's a sneak peek of the internal:  
 ![Screenshot](./Screenshot%202025-01-01%20213810.png)
 
+### Video Preview 🎥
+[Click here to watch the video on Vimeo!](https://vimeo.com/1043586061)
 ---
 
 ## Getting Started 🛠️
