@@ -144,7 +144,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>powershell -ExecutionPolicy Bypass -File "$(ProjectDir)\sign.ps1" "$(TargetPath)"
+      <Command>
 </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
