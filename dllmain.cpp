@@ -305,7 +305,7 @@ void PostRender( SDK::UGameViewportClient* Viewport, SDK::UCanvas* Canvas ) {
 
 			EnumStream << "};\n";
 
-			printf( "enum ->\n%s", EnumStream.str( ).c_str( ) );
+			printf( "enum -> \n%s", EnumStream.str( ).c_str( ) );
 
 			bInitBones = true;
 		}
